@@ -7,8 +7,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from .database import engine, get_db
-from .models import Base, User
-from .schemas import SignupIn, LoginIn
+from .models import Base, User, Deck
+from .schemas import SignupIn, LoginIn, DeckCreate, DeckOut
 from .security import hash_password, verify_password, create_access_token, decode_access_token
 
 from typing import cast
@@ -71,3 +71,70 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
 @app.get("/me")
 def me(user_id: int = Depends(get_current_user_id)):
     return {"user_id": user_id}
+
+@app.post("/decks", response_model=DeckOut, status_code=status.HTTP_201_CREATED)
+def create_deck(
+    payload: DeckCreate,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    deck = Deck(name=payload.name, user_id=user_id)
+    db.add(deck)
+    db.commit()
+    db.refresh(deck)
+    return deck
+
+@app.get("/decks", response_model=list[DeckOut])
+def list_decks(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    decks = (
+        db.query(Deck)
+        .filter(Deck.user_id == user_id)
+        .order_by(Deck.id.asc())
+        .all()
+    )
+    return decks
+
+@app.get("/decks/{deck_id}", response_model=DeckOut)
+def get_deck(
+    deck_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    deck = (
+        db.query(Deck)
+        .filter(Deck.id == deck_id, Deck.user_id == user_id)
+        .first()
+    )
+
+    if not deck:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Deck not found",
+        )
+
+    return deck
+
+@app.delete("/decks/{deck_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_deck(
+    deck_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    deck = (
+        db.query(Deck)
+        .filter(Deck.id == deck_id, Deck.user_id == user_id)
+        .first()
+    )
+
+    if not deck:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Deck not found",
+        )
+
+    db.delete(deck)
+    db.commit()
+    return
