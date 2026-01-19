@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional
 
 CARD_FRONT_MIN_LEN = 1
@@ -24,8 +24,7 @@ class DeckOut(BaseModel):
     id: int
     name: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CardCreate(BaseModel):
     front: str = Field(min_length=CARD_FRONT_MIN_LEN, max_length=CARD_FRONT_MAX_LEN)
@@ -36,8 +35,7 @@ class CardOut(BaseModel):
     front: str
     back: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CardUpdate(BaseModel):
     front: Optional[str] = Field(default=None, min_length=CARD_FRONT_MIN_LEN, max_length=CARD_FRONT_MAX_LEN)
