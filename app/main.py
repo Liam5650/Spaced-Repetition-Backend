@@ -11,8 +11,6 @@ from .models import Base, User, Deck, Card
 from .schemas import SignupIn, LoginIn, DeleteAccountIn, DeckCreate, DeckOut, CardCreate, CardOut, CardUpdate
 from .security import hash_password, verify_password, create_access_token, decode_access_token
 
-from typing import cast
-
 
 # --- Startup ---
 
@@ -67,14 +65,13 @@ def signup(payload: SignupIn, db: Session = Depends(get_db)):
 @app.post("/login")
 def login(payload: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
-    if not user or not verify_password(payload.password, str(user.password_hash)):
+    if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
-    user_id: int = cast(int, user.id)
-    token = create_access_token(user_id)
+    token = create_access_token(user.id)
     return {"access_token": token, "token_type": "bearer"}
 
 @app.get("/me")
@@ -96,7 +93,7 @@ def delete_me(
         )
 
     # Verify password before deletion
-    if not verify_password(payload.password, str(user.password_hash)):
+    if not verify_password(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect password",
@@ -263,9 +260,9 @@ def update_card(
 
     # Apply only fields the client actually sent
     if payload.front is not None:
-        card.front = payload.front # type: ignore[assignment]
+        card.front = payload.front
     if payload.back is not None:
-        card.back = payload.back # type: ignore[assignment]
+        card.back = payload.back
 
     db.commit()
     db.refresh(card)
