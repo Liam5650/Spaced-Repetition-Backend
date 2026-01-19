@@ -7,17 +7,20 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from .database import engine, get_db
-from .models import Base, User, Deck
-from .schemas import SignupIn, LoginIn, DeckCreate, DeckOut
+from .models import Base, User, Deck, Card
+from .schemas import SignupIn, LoginIn, DeleteAccountIn, DeckCreate, DeckOut, CardCreate, CardOut, CardUpdate
 from .security import hash_password, verify_password, create_access_token, decode_access_token
 
 from typing import cast
 
 
-# Create tables if they don't exist yet
-Base.metadata.create_all(bind=engine)
+# --- Startup ---
 
+Base.metadata.create_all(bind=engine) # Create tables if they don't exist yet
 app = FastAPI()
+
+
+# --- Auth Dependency ---
 
 bearer_scheme = HTTPBearer()
 
@@ -31,6 +34,9 @@ def get_current_user_id(creds: HTTPAuthorizationCredentials = Depends(bearer_sch
             detail="Invalid or expired token",
         )
 
+
+# --- Routes ---
+
 @app.get("/")
 def root():
     return {"message": "spaced repetition backend"}
@@ -39,7 +45,10 @@ def root():
 def health():
     return {"status": "ok"}
 
-@app.post("/signup", status_code=201)
+
+# --- User routes ---
+
+@app.post("/signup", status_code=status.HTTP_201_CREATED)
 def signup(payload: SignupIn, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
@@ -71,6 +80,34 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
 @app.get("/me")
 def me(user_id: int = Depends(get_current_user_id)):
     return {"user_id": user_id}
+
+@app.delete("/users/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_me(
+    payload: DeleteAccountIn,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # Verify password before deletion
+    if not verify_password(payload.password, str(user.password_hash)):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password",
+        )
+
+    db.delete(user)
+    db.commit()
+    return
+
+
+# --- Deck routes ---
 
 @app.post("/decks", response_model=DeckOut, status_code=status.HTTP_201_CREATED)
 def create_deck(
@@ -136,5 +173,123 @@ def delete_deck(
         )
 
     db.delete(deck)
+    db.commit()
+    return
+
+
+# --- Card routes ---
+
+@app.post("/decks/{deck_id}/cards", response_model=CardOut, status_code=status.HTTP_201_CREATED)
+def create_card(
+    deck_id: int,
+    payload: CardCreate,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    # 1) Confirm deck exists AND belongs to user
+    _deck = (
+        db.query(Deck)
+        .filter(Deck.id == deck_id, Deck.user_id == user_id)
+        .first()
+    )
+    if not _deck:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Deck not found",
+        )
+
+    # 2) Create the card linked to that deck
+    card = Card(front=payload.front, back=payload.back, deck_id=deck_id)
+    db.add(card)
+    db.commit()
+    db.refresh(card)
+    return card
+
+@app.get("/decks/{deck_id}/cards", response_model=list[CardOut])
+def list_cards(
+    deck_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    # 1) Confirm deck exists AND belongs to user
+    _deck = (
+        db.query(Deck)
+        .filter(Deck.id == deck_id, Deck.user_id == user_id)
+        .first()
+    )
+    if not _deck:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Deck not found",
+        )
+    
+    cards = (
+        db.query(Card)
+        .filter(Card.deck_id == deck_id)
+        .order_by(Card.id.asc())
+        .all()
+    )
+
+    return cards
+
+@app.patch("/cards/{card_id}", response_model=CardOut)
+def update_card(
+    card_id: int,
+    payload: CardUpdate,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    
+    # Reject empty update payload
+    if payload.front is None and payload.back is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Provide at least one field to update",
+        )
+    
+    # Fetch card + enforce ownership by joining through deck
+    card = (
+        db.query(Card)
+        .join(Deck, Card.deck_id == Deck.id)
+        .filter(Card.id == card_id, Deck.user_id == user_id)
+        .first()
+    )
+
+    if not card:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Card not found",
+        )
+
+    # Apply only fields the client actually sent
+    if payload.front is not None:
+        card.front = payload.front # type: ignore[assignment]
+    if payload.back is not None:
+        card.back = payload.back # type: ignore[assignment]
+
+    db.commit()
+    db.refresh(card)
+    return card
+
+@app.delete("/cards/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_card(
+    card_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    card = (
+        db.query(Card)
+        .join(Deck, Card.deck_id == Deck.id)
+        .filter(Card.id == card_id, Deck.user_id == user_id)
+        .first()
+    )
+
+    if not card:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Card not found",
+        )
+
+    db.delete(card)
     db.commit()
     return
