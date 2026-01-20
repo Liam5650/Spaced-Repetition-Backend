@@ -1,5 +1,8 @@
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, String, DateTime, Float, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
+
+from datetime import datetime
 
 from .database import Base
 
@@ -11,6 +14,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
 
+    # Relationships
     decks: Mapped[list["Deck"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
@@ -22,6 +26,7 @@ class Deck(Base):
 
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
+    # Relationships
     user: Mapped["User"] = relationship(back_populates="decks")
     cards: Mapped[list["Card"]] = relationship(back_populates="deck", cascade="all, delete-orphan")
 
@@ -35,4 +40,58 @@ class Card(Base):
 
     deck_id: Mapped[int] = mapped_column(Integer, ForeignKey("decks.id", ondelete="CASCADE"), nullable=False)
 
+    # Relationships
     deck: Mapped["Deck"] = relationship(back_populates="cards")
+    schedule: Mapped["CardSchedule | None"] = relationship(back_populates="card", uselist=False, cascade="all, delete-orphan")
+    review_history: Mapped[list["ReviewHistory"]] = relationship(back_populates="card", cascade="all, delete-orphan")
+
+
+class CardSchedule(Base):
+    __tablename__ = "card_schedules"
+
+    # 1:1 Card to CardSchedule relationship, must have an associated card to exist
+    card_id: Mapped[int] = mapped_column(Integer, ForeignKey("cards.id", ondelete="CASCADE"), primary_key=True)
+
+    # SM-2 algo needed values
+    repetition_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    interval_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ease_factor: Mapped[float] = mapped_column(Float, nullable=False, default=2.5)
+
+    # Index to easily get due cards
+    next_review_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+    # Nice to haves
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    card: Mapped["Card"] = relationship(back_populates="schedule")
+
+
+class ReviewHistory(Base):
+    __tablename__ = "review_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # Index to easily get entire review history for a card
+    card_id: Mapped[int] = mapped_column(Integer, ForeignKey("cards.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # History for deterministic reproducibility
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    quality: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Sorted card review history
+    __table_args__ = (Index("ix_review_history_card_id_reviewed_at_desc", "card_id", reviewed_at.desc()),)
+
+    # Nice to haves
+    repetition_before: Mapped[int] = mapped_column(Integer, nullable=False)
+    interval_before: Mapped[int] = mapped_column(Integer, nullable=False)
+    ease_before: Mapped[float] = mapped_column(Float, nullable=False)
+    repetition_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    interval_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    ease_after: Mapped[float] = mapped_column(Float, nullable=False)
+    next_review_at_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # Relationships
+    card: Mapped["Card"] = relationship(back_populates="review_history")
