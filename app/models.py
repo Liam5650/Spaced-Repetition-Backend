@@ -24,7 +24,8 @@ class Deck(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
 
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # Index based on user to quickly find all decks belonging to a user
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="decks")
@@ -38,7 +39,8 @@ class Card(Base):
     front: Mapped[str] = mapped_column(String, nullable=False)
     back: Mapped[str] = mapped_column(String, nullable=False)
 
-    deck_id: Mapped[int] = mapped_column(Integer, ForeignKey("decks.id", ondelete="CASCADE"), nullable=False)
+    # Index based on deck to quickly find all cards belonging to a deck
+    deck_id: Mapped[int] = mapped_column(Integer, ForeignKey("decks.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Relationships
     deck: Mapped["Deck"] = relationship(back_populates="cards")
@@ -51,6 +53,9 @@ class CardSchedule(Base):
 
     # 1:1 Card to CardSchedule relationship, must have an associated card to exist
     card_id: Mapped[int] = mapped_column(Integer, ForeignKey("cards.id", ondelete="CASCADE"), primary_key=True)
+
+    # Denormalized owner for fast due queries at scale
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     # SM-2 algo needed values
     repetition_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -67,6 +72,9 @@ class CardSchedule(Base):
 
     # Relationships
     card: Mapped["Card"] = relationship(back_populates="schedule")
+
+    # Composite index to efficiently query due cards by user and review time
+    __table_args__ = (Index("ix_card_schedules_user_id_next_review_at", "user_id", "next_review_at"),)
 
 
 class ReviewHistory(Base):
