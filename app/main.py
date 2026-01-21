@@ -5,9 +5,10 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from .database import engine, get_db
-from .models import Base, User, Deck, Card
+from .models import Base, User, Deck, Card, CardSchedule
 from .schemas import SignupIn, LoginIn, DeleteAccountIn, DeckCreate, DeckOut, CardCreate, CardOut, CardUpdate
 from .security import hash_password, verify_password, create_access_token, decode_access_token
 
@@ -224,6 +225,38 @@ def list_cards(
         db.query(Card)
         .filter(Card.deck_id == deck_id)
         .order_by(Card.id.asc())
+        .all()
+    )
+
+    return cards
+
+@app.get("/decks/{deck_id}/cards/due", response_model=list[CardOut])
+def list_due_cards(
+    deck_id: int,
+    limit: int = 10,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    # 1) Confirm deck exists and belongs to user
+    deck_exists = (
+        db.query(Deck.id)
+        .filter(Deck.id == deck_id, Deck.user_id == user_id)
+        .first()
+    )
+    if not deck_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Deck not found",
+        )
+
+    # 2) Fetch due cards for this deck (index-driven)
+    cards = (
+        db.query(Card)
+        .join(CardSchedule, CardSchedule.card_id == Card.id)
+        .filter(CardSchedule.deck_id == deck_id)
+        .filter(CardSchedule.next_review_at <= func.now())
+        .order_by(CardSchedule.next_review_at.asc())
+        .limit(limit)
         .all()
     )
 
