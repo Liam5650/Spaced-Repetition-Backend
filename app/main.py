@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from .database import engine, get_db
-from .models import Base, User, Deck, Card, CardSchedule
+from .models import Base, User, Deck, Card, CardSchedule, ReviewHistory
 from .schemas import SignupIn, LoginIn, DeleteAccountIn, DeckCreate, DeckOut, CardCreate, CardOut, CardUpdate
 from .security import hash_password, verify_password, create_access_token, decode_access_token
+from .sm2 import sm2_update
 
 
 # --- Startup ---
@@ -184,7 +185,7 @@ def create_card(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    # 1) Confirm deck exists AND belongs to user
+    # Confirm deck exists AND belongs to user
     _deck = (
         db.query(Deck)
         .filter(Deck.id == deck_id, Deck.user_id == user_id)
@@ -196,7 +197,7 @@ def create_card(
             detail="Deck not found",
         )
 
-    # 2) Create the card linked to that deck
+    # Create the card linked to that deck
     card = Card(front=payload.front, back=payload.back, deck_id=deck_id)
     db.add(card)
     db.commit()
@@ -209,7 +210,7 @@ def list_cards(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    # 1) Confirm deck exists AND belongs to user
+    # Confirm deck exists AND belongs to user
     _deck = (
         db.query(Deck)
         .filter(Deck.id == deck_id, Deck.user_id == user_id)
@@ -258,13 +259,45 @@ def list_new_cards(
 
     return cards
 
+@app.get("/decks/{deck_id}/cards/due", response_model=list[CardOut])
+def list_due_cards(
+    deck_id: int,
+    limit: int = 10,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    # Confirm deck exists and belongs to user
+    deck_exists = (
+        db.query(Deck.id)
+        .filter(Deck.id == deck_id, Deck.user_id == user_id)
+        .first()
+    )
+    if not deck_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Deck not found",
+        )
+
+    # Fetch due cards for this deck (index-driven)
+    cards = (
+        db.query(Card)
+        .join(CardSchedule, CardSchedule.card_id == Card.id)
+        .filter(CardSchedule.deck_id == deck_id)
+        .filter(CardSchedule.next_review_at <= func.now())
+        .order_by(CardSchedule.next_review_at.asc())
+        .limit(limit)
+        .all()
+    )
+
+    return cards
+
 @app.post("/cards/{card_id}/learn", status_code=status.HTTP_201_CREATED)
 def learn_card(
     card_id: int,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    # 1) Fetch card + enforce ownership via deck
+    # Fetch card + enforce ownership via deck
     card = (
         db.query(Card)
         .join(Deck, Card.deck_id == Deck.id)
@@ -277,14 +310,14 @@ def learn_card(
             detail="Card not found",
         )
 
-    # 2) Reject if already learned
+    # Reject if already learned
     if card.is_learned:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Card is already learned",
         )
 
-    # 3) Create initial schedule (due immediately)
+    # Create initial schedule (due immediately)
     schedule = CardSchedule(
         card_id=card.id,
         deck_id=card.deck_id,
@@ -301,37 +334,73 @@ def learn_card(
     db.refresh(schedule)
     return
 
-@app.get("/decks/{deck_id}/cards/due", response_model=list[CardOut])
-def list_due_cards(
-    deck_id: int,
-    limit: int = 10,
+@app.post("/cards/{card_id}/review")
+def review_card(
+    card_id: int,
+    quality: int,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    # 1) Confirm deck exists and belongs to user
-    deck_exists = (
-        db.query(Deck.id)
-        .filter(Deck.id == deck_id, Deck.user_id == user_id)
+    # Fetch card + enforce ownership via deck
+    card = (
+        db.query(Card)
+        .join(Deck, Card.deck_id == Deck.id)
+        .filter(Card.id == card_id, Deck.user_id == user_id)
         .first()
     )
-    if not deck_exists:
+    if not card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Deck not found",
+            detail="Card not found",
         )
 
-    # 2) Fetch due cards for this deck (index-driven)
-    cards = (
-        db.query(Card)
-        .join(CardSchedule, CardSchedule.card_id == Card.id)
-        .filter(CardSchedule.deck_id == deck_id)
-        .filter(CardSchedule.next_review_at <= func.now())
-        .order_by(CardSchedule.next_review_at.asc())
-        .limit(limit)
-        .all()
+    # Reject if card has no schedule yet (meaning it has not been learned)
+    if not card.schedule:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Card is not learned",
+        )
+    
+    # Get current schedule values
+    schedule = card.schedule
+    repetition_before = schedule.repetition_count
+    interval_before = schedule.interval_days
+    ease_before = schedule.ease_factor
+    timestamp = db.query(func.now()).scalar()
+
+    # Get new values from sm-2 algo
+    updated_vals = sm2_update(
+        repetition_before,
+        interval_before,
+        ease_before,
+        quality,
+        timestamp,
     )
 
-    return cards
+    # Update to new card schedule values
+    schedule.repetition_count = updated_vals["repetition_count"]
+    schedule.interval_days = updated_vals["interval_days"]
+    schedule.ease_factor = updated_vals["ease_factor"]
+    schedule.next_review_at = updated_vals["next_review_at"]
+    schedule.last_reviewed_at = timestamp
+
+    # Create history for the review
+    history = ReviewHistory(
+        card_id=card.id,
+        reviewed_at=timestamp,
+        quality=quality,
+        repetition_before=repetition_before,
+        interval_before=interval_before,
+        ease_before=ease_before,
+        repetition_after=schedule.repetition_count,
+        interval_after=schedule.interval_days,
+        ease_after=schedule.ease_factor,
+        next_review_at_after=schedule.next_review_at,
+    )
+    
+    db.add(history)
+    db.commit()
+    return
 
 @app.patch("/cards/{card_id}", response_model=CardOut)
 def update_card(
