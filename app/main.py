@@ -230,6 +230,77 @@ def list_cards(
 
     return cards
 
+@app.get("/decks/{deck_id}/cards/new", response_model=list[CardOut])
+def list_new_cards(
+    deck_id: int,
+    limit: int = 10,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    deck_exists = (
+        db.query(Deck.id)
+        .filter(Deck.id == deck_id, Deck.user_id == user_id)
+        .first()
+    )
+    if not deck_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Deck not found",
+        )
+
+    cards = (
+        db.query(Card)
+        .filter(Card.deck_id == deck_id)
+        .filter(Card.is_learned == False)
+        .limit(limit)
+        .all()
+    )
+
+    return cards
+
+@app.post("/cards/{card_id}/learn", status_code=status.HTTP_201_CREATED)
+def learn_card(
+    card_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    # 1) Fetch card + enforce ownership via deck
+    card = (
+        db.query(Card)
+        .join(Deck, Card.deck_id == Deck.id)
+        .filter(Card.id == card_id, Deck.user_id == user_id)
+        .first()
+    )
+    if not card:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Card not found",
+        )
+
+    # 2) Reject if already learned
+    if card.is_learned:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Card is already learned",
+        )
+
+    # 3) Create initial schedule (due immediately)
+    schedule = CardSchedule(
+        card_id=card.id,
+        deck_id=card.deck_id,
+        repetition_count=0,
+        interval_days=0,
+        ease_factor=2.5,
+        next_review_at=func.now(),
+        last_reviewed_at=None,
+    )
+
+    card.is_learned = True
+    db.add(schedule)
+    db.commit()
+    db.refresh(schedule)
+    return
+
 @app.get("/decks/{deck_id}/cards/due", response_model=list[CardOut])
 def list_due_cards(
     deck_id: int,

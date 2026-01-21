@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, String, DateTime, Float, Index
+from sqlalchemy import ForeignKey, Integer, String, DateTime, Float, Index, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -42,11 +42,16 @@ class Card(Base):
     # Index based on deck to quickly find all cards belonging to a deck
     deck_id: Mapped[int] = mapped_column(Integer, ForeignKey("decks.id", ondelete="CASCADE"), nullable=False, index=True)
 
+    # Denormalized learned flag for fast "new cards" queries
+    is_learned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     # Relationships
     deck: Mapped["Deck"] = relationship(back_populates="cards")
     schedule: Mapped["CardSchedule | None"] = relationship(back_populates="card", uselist=False, cascade="all, delete-orphan", single_parent=True)
     review_history: Mapped[list["ReviewHistory"]] = relationship(back_populates="card", cascade="all, delete-orphan")
 
+    # Composite index to efficiently query new cards by deck
+    __table_args__ = (Index("ix_cards_deck_id_is_learned_id", "deck_id", "is_learned", "id"),)
 
 class CardSchedule(Base):
     __tablename__ = "card_schedules"
