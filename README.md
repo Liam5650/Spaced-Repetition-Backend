@@ -2,7 +2,7 @@
 
 Backend API for a spaced-repetition flashcard application.
 
-The project focuses on a clean REST design, authentication, and data ownership rules. The service supports users, decks, and cards, and is built to be extended with scheduling and review logic.
+The project focuses on a clean REST design, authentication, and data ownership rules. The service supports users, decks, and cards, and is extended with scheduling and review logic based on the SM-2 algorithm.
 
 ## Tech Stack
 - **FastAPI** — API framework
@@ -18,3 +18,6 @@ The project focuses on a clean REST design, authentication, and data ownership r
 - Deck CRUD with per-user ownership
 - Card CRUD scoped to decks
 - Account deletion with password verification
+- Learn cards (creates initial schedule)
+- Fetch new cards / due cards
+- Review endpoint updates schedule + persists deterministic review history
