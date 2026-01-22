@@ -13,6 +13,7 @@ def sm2_update(
     reviewed_at: datetime,
 ) -> dict:
     
+    # Should already be enforced via schema, but check to be sure
     if quality < 0 or quality > 5:
         raise ValueError("quality must be between 0 and 5")
 

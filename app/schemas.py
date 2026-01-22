@@ -40,3 +40,6 @@ class CardOut(BaseModel):
 class CardUpdate(BaseModel):
     front: Optional[str] = Field(default=None, min_length=CARD_FRONT_MIN_LEN, max_length=CARD_FRONT_MAX_LEN)
     back: Optional[str] = Field(default=None, min_length=CARD_BACK_MIN_LEN, max_length=CARD_BACK_MAX_LEN)
+
+class ReviewIn(BaseModel):
+    quality: int = Field(..., ge=0, le=5)

@@ -9,7 +9,7 @@ from sqlalchemy import func
 
 from .database import engine, get_db
 from .models import Base, User, Deck, Card, CardSchedule, ReviewHistory
-from .schemas import SignupIn, LoginIn, DeleteAccountIn, DeckCreate, DeckOut, CardCreate, CardOut, CardUpdate
+from .schemas import SignupIn, LoginIn, DeleteAccountIn, DeckCreate, DeckOut, CardCreate, CardOut, CardUpdate, ReviewIn
 from .security import hash_password, verify_password, create_access_token, decode_access_token
 from .sm2 import sm2_update
 
@@ -297,11 +297,14 @@ def learn_card(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    # Fetch card + enforce ownership via deck
+    # Fetch card + enforce ownership via deck. Lock card to prevent race
+    # condition where two requests may pass the is_learned check, and both
+    # try to create the schedule.
     card = (
         db.query(Card)
         .join(Deck, Card.deck_id == Deck.id)
         .filter(Card.id == card_id, Deck.user_id == user_id)
+        .with_for_update()
         .first()
     )
     if not card:
@@ -337,22 +340,27 @@ def learn_card(
 @app.post("/cards/{card_id}/review")
 def review_card(
     card_id: int,
-    quality: int,
+    payload: ReviewIn,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    # Fetch card + enforce ownership via deck
-    card = (
-        db.query(Card)
-        .join(Deck, Card.deck_id == Deck.id)
-        .filter(Card.id == card_id, Deck.user_id == user_id)
-        .first()
-    )
-    if not card:
+    # Fetch card + enforce ownership via deck. Lock card to ensure
+    # one review will always map to one history being created (race condition)
+    result = (
+            db.query(Card, func.now())
+            .join(Deck, Card.deck_id == Deck.id)
+            .filter(Card.id == card_id, Deck.user_id == user_id)
+            .with_for_update(of=Card) 
+            .first()
+        )
+    if not result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Card not found",
         )
+
+    # Unpack the tuple: (Card object, datetime object)
+    card, db_now = result
 
     # Reject if card has no schedule yet (meaning it has not been learned)
     if not card.schedule:
@@ -361,13 +369,25 @@ def review_card(
             detail="Card is not learned",
         )
     
+    # If a previous request just completed and the card is now unlocked, 
+    # another race condition is possible where the card could accidentally get 
+    # reviewed twice. Ensure the card is actually still due. 
+    if card.schedule.next_review_at > db_now:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Card was already reviewed and is no longer due."
+        )
+    
     # Get current schedule values
     schedule = card.schedule
     repetition_before = schedule.repetition_count
     interval_before = schedule.interval_days
     ease_before = schedule.ease_factor
-    timestamp = db.query(func.now()).scalar()
+    timestamp = db_now
 
+    # Unpack payload
+    quality = payload.quality
+    
     # Get new values from sm-2 algo
     updated_vals = sm2_update(
         repetition_before,
