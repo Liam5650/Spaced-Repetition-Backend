@@ -1,3 +1,4 @@
+import os
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -16,7 +17,11 @@ from .sm2 import sm2_update
 
 # --- Startup ---
 
-Base.metadata.create_all(bind=engine) # Create tables if they don't exist yet
+# Drop and recreate all tables if in the dev environment
+if os.getenv("ENV") == "dev":
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    
 app = FastAPI()
 
 
