@@ -1,4 +1,4 @@
-import os
+from .config import JWT_SECRET_KEY
 from datetime import datetime, timedelta, UTC
 
 from jose import JWTError, jwt
@@ -15,7 +15,6 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
-JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = 60
 

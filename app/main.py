@@ -1,7 +1,4 @@
-import os
-from dotenv import load_dotenv
-load_dotenv()
-
+from .config import ENV
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -18,7 +15,7 @@ from .sm2 import sm2_update
 # --- Startup ---
 
 # Drop and recreate all tables if in the dev environment
-if os.getenv("ENV") == "dev":
+if ENV == "dev":
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     
