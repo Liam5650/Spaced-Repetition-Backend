@@ -11,6 +11,9 @@ from .schemas import SignupIn, LoginIn, DeleteAccountIn, DeckCreate, DeckOut, Ca
 from .security import hash_password, verify_password, create_access_token, decode_access_token
 from .sm2 import sm2_update
 
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
 
 # --- Startup ---
 
@@ -20,6 +23,7 @@ if ENV == "dev":
     Base.metadata.create_all(bind=engine)
     
 app = FastAPI()
+app.mount("/ui", StaticFiles(directory=str(Path(__file__).resolve().parent / "static"), html=True), name="ui")
 
 
 # --- Auth Dependency ---
