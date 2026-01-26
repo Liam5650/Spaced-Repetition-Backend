@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Spaced Repetition Demo UI</title>
+
+  <style>
+    /* Structural / layout */
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; max-width: 1200px; }
+    h2 { margin: 0 0 8px 0; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .box { border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin: 12px 0; }
+    input, select, button, textarea { padding: 8px; }
+    textarea { width: 100%; min-height: 32px; box-sizing: border-box;}
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 800px) {.grid2 { grid-template-columns: 1fr; }}
+    .cardsGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
+    .hidden { display: none; }
+    .cardBox { border: 1px solid #eee; border-radius: 8px; padding: 12px; background: #fafafa; }
+
+    /* Status & semantic styling */
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    .muted { color: #666; font-size: 14px; }
+    .error { color: #b00020; font-size: 14px; }
+    .ok { color: #0b7a0b; font-size: 14px; }
+  </style>
+
+</head>
+
+<body>
+
+  <h1>Spaced Repetition Demo UI</h1>
+  <div class="muted">Typical example flow: Signup → Login → Create deck → Create card under deck → Learn card → Review Card</div>
+
+  <!--Auth Actions-->
+  <div class="box">
+    <h2>Auth</h2>
+    <div class="row">
+      <input id="email" placeholder="email" value="demo@test.com" />
+      <input id="password" type="password" placeholder="password" value="password123" />
+      <button id="btnSignup">Signup</button>
+      <button id="btnLogin">Login</button>
+      <button id="btnLogout">Logout</button>
+      <button id="btnDeleteMe">Delete account</button>
+    </div>
+    <div id="authStatus" class="muted">Not logged in.</div>
+  </div>
+
+  <!--Basic deck and card CRUD actions-->
+  <div class="grid2">
+
+    <!--Deck Section-->
+    <div class="box">
+      <h2>Decks</h2>
+      <div class="row">
+        <button id="btnLoadDecks">Load decks</button>
+        <select id="deckSelect"></select>
+        <span id="deckStatus" class="muted">No decks loaded.</span>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <div class="mono">Current deck:</div>
+        <div id="currentDeckLabel" class="mono muted">None selected</div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <input id="newDeckName" placeholder="New deck name" />
+        <button id="btnCreateDeck">Create deck</button>
+        <button id="btnDeleteDeck" class="smallBtn">Delete selected deck</button>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button id="btnShowDeckCards">Show cards in deck</button>
+        <span id="deckCardsStatus" class="muted">No cards displayed.</span>
+      </div>
+
+      <div id="deckCards" class="cardsGrid"></div>
+    </div>
+
+    <!--Card Section-->
+    <div class="box">
+      <h2>Create card</h2>
+      <div class="muted">Creates a card in the currently selected deck.</div>
+      <div style="margin-top:10px;">
+        <div class="muted">Front</div>
+        <textarea id="cardFrontIn" placeholder="e.g. こんにちは"></textarea>
+        <div class="muted" style="margin-top:8px;">Back</div>
+        <textarea id="cardBackIn" placeholder="e.g. Hello"></textarea>
+        <div class="row" style="margin-top:10px;">
+          <button id="btnCreateCard">Create card</button>
+          <span id="createCardStatus" class="muted"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!--Learning and Reviewing Actions-->
+  <div class="grid2">
+
+    <!--Learning Section-->
+    <div class="box">
+      <div class="sectionTitle">
+        <h2>Learn Cards</h2>
+        <div class="muted">New → Learn → (becomes due)</div>
+      </div>
+
+      <div class="row">
+        <button id="btnLoadNew">Load next new</button>
+        <button id="btnLearnCurrent" class="hidden">Learn current</button>
+        <button id="btnRevealNewBack">Reveal back</button>
+      </div>
+
+      <div style="margin-top:12px;">
+        <div class="muted">Current NEW card:</div>
+        <div id="newFront" class="cardBox"><pre class="card"></pre></div>
+        <div id="newBack" class="cardBox hidden"><pre class="card"></pre></div>
+        <div id="newMeta" class="muted mono">No card loaded</div>
+      </div>
+
+      <div id="newMsg" class="muted" style="margin-top:10px;"></div>
+    </div>
+
+    <!--Reviewing Section-->
+    <div class="box">
+      <div class="sectionTitle">
+        <h2>Review Cards</h2>
+        <div class="muted">Due → Review (confidence from 0–5, 3 or more is pass and 2 or less is fail)</div>
+      </div>
+
+      <div class="row">
+        <button id="btnLoadDue">Load next due</button>
+        <button id="btnRevealDueBack">Reveal back</button>
+      </div>
+
+      <div class="row hidden" id="reviewRow" style="margin-top:10px;">
+        <span class="muted">Review:</span>
+        <button class="btnReview" data-q="0">0</button>
+        <button class="btnReview" data-q="1">1</button>
+        <button class="btnReview" data-q="2">2</button>
+        <button class="btnReview" data-q="3">3</button>
+        <button class="btnReview" data-q="4">4</button>
+        <button class="btnReview" data-q="5">5</button>
+      </div>
+
+      <div style="margin-top:12px;">
+        <div class="muted">Current DUE card:</div>
+        <div id="dueFront" class="cardBox"><pre class="card"></pre></div>
+        <div id="dueBack" class="cardBox hidden"><pre class="card"></pre></div>
+        <div id="dueMeta" class="muted mono">No card loaded</div>
+      </div>
+
+      <div id="dueMsg" class="muted" style="margin-top:10px;"></div>
+    </div>
+  </div>
+
+  <!--Status Updates-->
+  <div class="box">
+    <h2>Status</h2>
+    <div id="msg" class="muted"></div>
+  </div>
+
+  <!--Scripts Section-->
+  <script>
+
+    //Login state
+    let token = null;
+
+    //Auth headers
+    function authHeaders() {
+      if (!token) return {};
+      return { Authorization: `Bearer ${token}` };
+    }
+
+    //Signup
+    const emailInput = document.getElementById("email");
+    const passwordInput = document.getElementById("password");
+    const signupBtn = document.getElementById("btnSignup");
+    const authStatus = document.getElementById("authStatus");
+    signupBtn.addEventListener("click", async () => {
+      const email = emailInput.value;
+      const password = passwordInput.value;
+
+      try {
+        const res = await fetch("/signup", {method: "POST", headers: {"Content-Type": "application/json",},
+          body: JSON.stringify({email: email, password: password,}),});
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || "Signup failed");
+        }
+        const data = await res.json();
+        authStatus.className = "ok";
+        authStatus.textContent = `Signed up as ${data.email}`;
+      } catch (err) {
+        authStatus.className = "error";
+        authStatus.textContent = err.message;
+      }
+    });
+
+    //Login
+    const loginBtn = document.getElementById("btnLogin");
+    loginBtn.addEventListener("click", async () => {
+      try {
+        const res = await fetch("/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: emailInput.value,
+            password: passwordInput.value,
+          }),
+        });
+
+        if (!res.ok) throw new Error((await res.json()).detail || "Login failed");
+
+        const data = await res.json();
+        token = data.access_token;
+
+        const meRes = await fetch("/me", { headers: authHeaders() });
+        if (!meRes.ok) throw new Error("Token check failed");
+
+        const me = await meRes.json();
+        authStatus.className = "ok";
+        authStatus.textContent = `Logged in. user_id=${me.user_id}`;
+      } catch (err) {
+        token = null;
+        authStatus.className = "error";
+        authStatus.textContent = err.message;
+      }
+    });
+
+    //Logout
+    const logoutBtn = document.getElementById("btnLogout");
+    logoutBtn.addEventListener("click", () => {
+      token = null;
+      authStatus.className = "muted";
+      authStatus.textContent = "Not logged in.";
+    });
+
+    //Delete Account
+    const deleteMeBtn = document.getElementById("btnDeleteMe");
+    deleteMeBtn.addEventListener("click", async () => {
+      if (!token) {
+        authStatus.className = "error";
+        authStatus.textContent = "Login first.";
+        return;
+      }
+
+      if (!confirm("Delete your account permanently? This cannot be undone.")) return;
+
+      try {
+        const res = await fetch("/users/me", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ password: passwordInput.value }),
+        });
+
+        if (!res.ok) throw new Error((await res.json()).detail || "Delete failed");
+
+        token = null;
+        authStatus.className = "ok";
+        authStatus.textContent = "Account deleted.";
+      } catch (err) {
+        authStatus.className = "error";
+        authStatus.textContent = err.message;
+      }
+    });
+
+
+  </script>
+</body>
+</html> 
