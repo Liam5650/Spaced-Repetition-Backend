@@ -336,7 +336,6 @@ def learn_card(
     card.is_learned = True
     db.add(schedule)
     db.commit()
-    db.refresh(schedule)
     return
 
 @app.post("/cards/{card_id}/review")
@@ -346,42 +345,36 @@ def review_card(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    # Fetch card + enforce ownership via deck. Lock card to ensure
+    # Fetch card schedule + enforce ownership via deck. Lock schedule to ensure
     # one review will always map to one history being created (race condition)
     result = (
-            db.query(Card, func.now())
-            .join(Deck, Card.deck_id == Deck.id)
-            .filter(Card.id == card_id, Deck.user_id == user_id)
-            .with_for_update(of=Card) 
-            .first()
+        db.query(CardSchedule, func.now())
+        .join(Card, CardSchedule.card_id == Card.id)
+        .join(Deck, Card.deck_id == Deck.id)
+        .filter(Card.id == card_id, Deck.user_id == user_id)
+        .with_for_update(of=CardSchedule)
+        .first()
         )
     if not result:
+        # We don't know if the card ID is wrong OR if the card is just not learned yet
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Card not found",
+            detail="Card not found or not learned."
         )
 
-    # Unpack the tuple: (Card object, datetime object)
-    card, db_now = result
-
-    # Reject if card has no schedule yet (meaning it has not been learned)
-    if not card.schedule:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Card is not learned",
-        )
+    # Unpack the tuple: (CardSchedule object, datetime object)
+    schedule, db_now = result
     
-    # If a previous request just completed and the card is now unlocked, 
-    # another race condition is possible where the card could accidentally get 
-    # reviewed twice. Ensure the card is actually still due. 
-    if card.schedule.next_review_at > db_now:
+    # If a previous request just completed and the schedule is now unlocked, 
+    # another race condition is possible where the schedule could accidentally get 
+    # updated (reviewed) twice. Ensure the card is actually still due. 
+    if schedule.next_review_at > db_now:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Card was already reviewed and is no longer due."
         )
     
     # Get current schedule values
-    schedule = card.schedule
     repetition_before = schedule.repetition_count
     interval_before = schedule.interval_days
     ease_before = schedule.ease_factor
@@ -408,7 +401,7 @@ def review_card(
 
     # Create history for the review
     history = ReviewHistory(
-        card_id=card.id,
+        card_id=card_id,
         reviewed_at=timestamp,
         quality=quality,
         repetition_before=repetition_before,

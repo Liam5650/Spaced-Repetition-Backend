@@ -59,7 +59,7 @@ class CardSchedule(Base):
     # 1:1 Card to CardSchedule relationship, must have an associated card to exist
     card_id: Mapped[int] = mapped_column(Integer, ForeignKey("cards.id", ondelete="CASCADE"), primary_key=True)
 
-    # Denormalized deck for fast due queries at scale
+    # Cached deck_id for fast due-card queries
     deck_id: Mapped[int] = mapped_column(Integer, ForeignKey("decks.id", ondelete="CASCADE"), nullable=False)
 
     # SM-2 algo needed values
