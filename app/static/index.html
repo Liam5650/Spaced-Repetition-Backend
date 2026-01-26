@@ -32,7 +32,7 @@
 <body>
 
   <h1>Spaced Repetition Demo UI</h1>
-  <div class="muted">Typical example flow: Signup → Login → Create deck → Create card under deck → Learn card → Review Card</div>
+  <div class="muted">Typical example flow: Signup → Login → Create deck → Create card under deck → Learn card → Review card</div>
 
   <!--Auth Actions-->
   <div class="box">
@@ -164,6 +164,8 @@
   <!--Scripts Section-->
   <script>
 
+    // ESSENTIALS
+
     //Login state
     let token = null;
 
@@ -173,11 +175,14 @@
       return { Authorization: `Bearer ${token}` };
     }
 
+    // AUTHORIZATION SCRIPTS
+
     //Signup
     const emailInput = document.getElementById("email");
     const passwordInput = document.getElementById("password");
     const signupBtn = document.getElementById("btnSignup");
     const authStatus = document.getElementById("authStatus");
+
     signupBtn.addEventListener("click", async () => {
       const email = emailInput.value;
       const password = passwordInput.value;
@@ -201,6 +206,7 @@
 
     //Login
     const loginBtn = document.getElementById("btnLogin");
+
     loginBtn.addEventListener("click", async () => {
       try {
         const res = await fetch("/login", {
@@ -223,6 +229,7 @@
         const me = await meRes.json();
         authStatus.className = "ok";
         authStatus.textContent = `Logged in. user_id=${me.user_id}`;
+        await loadDecks();
       } catch (err) {
         token = null;
         authStatus.className = "error";
@@ -232,6 +239,7 @@
 
     //Logout
     const logoutBtn = document.getElementById("btnLogout");
+
     logoutBtn.addEventListener("click", () => {
       token = null;
       authStatus.className = "muted";
@@ -240,6 +248,7 @@
 
     //Delete Account
     const deleteMeBtn = document.getElementById("btnDeleteMe");
+
     deleteMeBtn.addEventListener("click", async () => {
       if (!token) {
         authStatus.className = "error";
@@ -267,7 +276,166 @@
       }
     });
 
+    // DECK SCRIPTS
 
-  </script>
+    //Load Decks
+    const btnLoadDecks = document.getElementById("btnLoadDecks");
+    const deckSelect = document.getElementById("deckSelect");
+    const deckStatus = document.getElementById("deckStatus");
+    const currentDeckLabel = document.getElementById("currentDeckLabel");
+
+    async function loadDecks() {
+      if (!token) {
+        deckStatus.className = "error";
+        deckStatus.textContent = "Login first.";
+        return;
+      }
+
+      deckStatus.className = "muted";
+      deckStatus.textContent = "Loading decks...";
+
+      const res = await fetch("/decks", { headers: authHeaders() });
+      if (!res.ok) throw new Error((await res.json()).detail || "Failed to load decks");
+
+      const decks = await res.json(); // list of { id, name }
+      deckSelect.innerHTML = "";
+
+      if (decks.length === 0) {
+        deckStatus.className = "muted";
+        deckStatus.textContent = "No decks yet.";
+        currentDeckLabel.textContent = "None selected";
+        return;
+      }
+
+      for (const d of decks) {
+        const opt = document.createElement("option");
+        opt.value = d.id;
+        opt.textContent = `${d.id}: ${d.name}`;
+        deckSelect.appendChild(opt);
+      }
+
+      deckStatus.className = "ok";
+      deckStatus.textContent = `Loaded ${decks.length} deck(s).`;
+
+      // Set current deck label to selected one
+      currentDeckLabel.textContent = deckSelect.options[deckSelect.selectedIndex].textContent;
+    }
+
+    btnLoadDecks.addEventListener("click", async () => {
+      try {
+        await loadDecks();
+      } catch (err) {
+        deckStatus.className = "error";
+        deckStatus.textContent = err.message;
+      }
+    });
+
+    deckSelect.addEventListener("change", () => {
+      currentDeckLabel.textContent = deckSelect.options[deckSelect.selectedIndex]?.textContent || "None selected";
+
+      const label = currentDeckLabel.textContent;
+
+      if (deckSelect.selectedIndex !== -1) {
+        deckStatus.className = "ok";
+        deckStatus.textContent = `Loaded ${label}`;
+      } else {
+        deckStatus.className = "muted";
+        deckStatus.textContent = "No deck selected.";
+      }
+    });
+ 
+    //Create Deck
+    const newDeckNameInput = document.getElementById("newDeckName");
+    const btnCreateDeck = document.getElementById("btnCreateDeck");
+
+    btnCreateDeck.addEventListener("click", async () => {
+      const name = newDeckNameInput.value.trim();
+
+      if (!token) {
+        deckStatus.className = "error";
+        deckStatus.textContent = "Login first.";
+        return;
+      }
+      if (!name) {
+        deckStatus.className = "error";
+        deckStatus.textContent = "Deck name is required.";
+        return;
+      }
+
+      try {
+        const res = await fetch("/decks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ name }),
+        });
+
+        if (!res.ok) throw new Error((await res.json()).detail || "Create deck failed");
+
+        const created = await res.json(); // {id, name}
+        deckStatus.className = "ok";
+        deckStatus.textContent = `Created deck: ${created.id}: ${created.name}`;
+
+        newDeckNameInput.value = "";
+        await loadDecks();
+
+        // Select the newly created deck in the dropdown
+        deckSelect.value = String(created.id);
+        deckSelect.dispatchEvent(new Event("change"));
+      } catch (err) {
+        deckStatus.className = "error";
+        deckStatus.textContent = err.message;
+      }
+    });
+
+    //Delete Deck
+    const btnDeleteDeck = document.getElementById("btnDeleteDeck");
+
+    function selectedDeckId() {
+      const v = deckSelect.value;
+      return v ? Number(v) : null;
+    }
+ 
+    btnDeleteDeck.addEventListener("click", async () => {
+      const deckId = selectedDeckId();
+
+      if (!token) {
+        deckStatus.className = "error";
+        deckStatus.textContent = "Login first.";
+        return;
+      }
+      if (!deckId) {
+        deckStatus.className = "error";
+        deckStatus.textContent = "Select a deck first.";
+        return;
+      }
+
+      if (!confirm(`Delete deck ${deckId}? This will also delete its cards.`)) return;
+
+      try {
+        const res = await fetch(`/decks/${deckId}`, {
+          method: "DELETE",
+          headers: authHeaders(),
+        });
+
+        if (!res.ok) throw new Error((await res.json()).detail || "Delete deck failed");
+
+        deckStatus.className = "ok";
+        deckStatus.textContent = `Deleted deck ${deckId}.`;
+
+        await loadDecks(); // refresh dropdown
+
+      } catch (err) {
+        deckStatus.className = "error";
+        deckStatus.textContent = err.message;
+      }
+    });
+
+    // CARD CRUD SCRIPTS
+
+    //Create Card
+
+    // CARD SRS (LEARN/REVIEW) SCRIPTS
+
+ </script>
 </body>
 </html> 
