@@ -237,10 +237,9 @@ def list_cards(
 
     return cards
 
-@app.get("/decks/{deck_id}/cards/new", response_model=list[CardOut])
-def list_new_cards(
+@app.get("/decks/{deck_id}/cards/new", response_model=CardOut)
+def get_new_card(
     deck_id: int,
-    limit: int = 10,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -255,20 +254,25 @@ def list_new_cards(
             detail="Deck not found",
         )
 
-    cards = (
+    card = (
         db.query(Card)
         .filter(Card.deck_id == deck_id)
         .filter(Card.is_learned == False)
-        .limit(limit)
-        .all()
+        .order_by(Card.id.asc())
+        .first()
     )
 
-    return cards
+    if not card:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No new cards",
+        )
 
-@app.get("/decks/{deck_id}/cards/due", response_model=list[CardOut])
-def list_due_cards(
+    return card
+
+@app.get("/decks/{deck_id}/cards/due", response_model=CardOut)
+def get_due_card(
     deck_id: int,
-    limit: int = 10,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -284,18 +288,23 @@ def list_due_cards(
             detail="Deck not found",
         )
 
-    # Fetch due cards for this deck (index-driven)
-    cards = (
+    # Fetch first due card for this deck (index-driven)
+    card = (
         db.query(Card)
         .join(CardSchedule, CardSchedule.card_id == Card.id)
         .filter(CardSchedule.deck_id == deck_id)
         .filter(CardSchedule.next_review_at <= func.now())
         .order_by(CardSchedule.next_review_at.asc())
-        .limit(limit)
-        .all()
+        .first()
     )
 
-    return cards
+    if not card:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No due cards",
+        )
+
+    return card
 
 @app.post("/cards/{card_id}/learn", status_code=status.HTTP_201_CREATED)
 def learn_card(
