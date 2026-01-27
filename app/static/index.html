@@ -23,8 +23,7 @@
     .cardBox {white-space: pre-wrap; overflow-wrap: anywhere;}
     .cardBox + .cardBox {margin-top: 8px;}
     .cardBox pre {margin: 0; min-height: 1.2em;}
-    .cardActions {display: flex; gap: 8px; margin-top: 10px;
-}
+    .cardActions {display: flex; gap: 8px; margin-top: 10px;}
 
     /* Status & semantic styling */
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
@@ -240,7 +239,7 @@
       token = null;
       authStatus.className = "muted";
       authStatus.textContent = "Not logged in.";
-      clearCardsUI();
+      clearDeckUI();
     });
 
     //Delete Account
@@ -265,6 +264,7 @@
         token = null;
         authStatus.className = "ok";
         authStatus.textContent = "Account deleted.";
+        clearDeckUI();
       } catch (err) {
         authStatus.className = "error";
         authStatus.textContent = err.message;
@@ -300,10 +300,7 @@
       deckSelect.innerHTML = "";
 
       if (decks.length === 0) {
-        deckStatus.className = "muted";
-        deckStatus.textContent = "No decks yet.";
-        currentDeckLabel.textContent = "None selected";
-        clearCardsUI();
+        clearDeckUI();
         return;
       }
 
@@ -345,6 +342,8 @@
 
       // Clear card display when deck changes
       clearCardsUI();
+      clearLearnUI();
+      clearReviewUI();
     });
  
     //Create Deck
@@ -487,12 +486,6 @@
     });
 
     //Show cards in deck
-    function clearCardsUI() {
-      deckCards.innerHTML = "";
-      deckCardsStatus.className = "muted";
-      deckCardsStatus.textContent = "No cards displayed.";
-    }
-
     function renderCards(cards) {
       deckCards.innerHTML = "";
 
@@ -978,6 +971,55 @@
         }
       });
     });
+
+    // Cleanup and misc.
+    function clearCardsUI() {
+      deckCards.innerHTML = "";
+      deckCardsStatus.className = "muted";
+      deckCardsStatus.textContent = "No cards displayed.";
+    }
+
+    function clearLearnUI() {
+      currentNewCard = null;
+
+      newFront.querySelector("pre").textContent = "";
+      newBack.querySelector("pre").textContent = "";
+      newBack.classList.add("hidden");
+
+      btnLearnCurrent.classList.add("hidden");
+
+      newMeta.className = "muted mono";
+      newMeta.textContent = "No card loaded";
+    }
+
+    function clearReviewUI() {
+      currentDueCard = null;
+
+      dueFront.querySelector("pre").textContent = "";
+      dueBack.querySelector("pre").textContent = "";
+      dueBack.classList.add("hidden");
+
+      reviewRow.classList.add("hidden");
+
+      dueMeta.className = "muted mono";
+      dueMeta.textContent = "No card loaded";
+    }
+
+    function clearDeckUI() {
+      // Clear dropdown + selection
+      deckSelect.innerHTML = "";
+      currentDeckLabel.textContent = "None selected";
+
+      // Reset deck status + new deck input
+      deckStatus.className = "muted";
+      deckStatus.textContent = "No decks loaded.";
+      newDeckNameInput.value = "";
+
+      // Clear dependent areas
+      clearCardsUI();
+      clearLearnUI();
+      clearReviewUI();
+}
 
  </script>
 </body>
