@@ -17,8 +17,12 @@
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     @media (max-width: 800px) {.grid2 { grid-template-columns: 1fr; }}
     .cardsGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
+    .cardsGrid {max-height: 300px; overflow-y: auto;}
     .hidden { display: none; }
     .cardBox { border: 1px solid #eee; border-radius: 8px; padding: 12px; background: #fafafa; }
+    .cardBox {white-space: pre-wrap; overflow-wrap: anywhere;}
+    .cardActions {display: flex; gap: 8px; margin-top: 10px;
+}
 
     /* Status & semantic styling */
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
@@ -244,6 +248,7 @@
       token = null;
       authStatus.className = "muted";
       authStatus.textContent = "Not logged in.";
+      clearCardsUI();
     });
 
     //Delete Account
@@ -304,13 +309,14 @@
         deckStatus.className = "muted";
         deckStatus.textContent = "No decks yet.";
         currentDeckLabel.textContent = "None selected";
+        clearCardsUI();
         return;
       }
 
       for (const d of decks) {
         const opt = document.createElement("option");
         opt.value = d.id;
-        opt.textContent = `${d.id}: ${d.name}`;
+        opt.textContent = d.name;
         deckSelect.appendChild(opt);
       }
 
@@ -318,7 +324,7 @@
       deckStatus.textContent = `Loaded ${decks.length} deck(s).`;
 
       // Set current deck label to selected one
-      currentDeckLabel.textContent = deckSelect.options[deckSelect.selectedIndex].textContent;
+      deckSelect.dispatchEvent(new Event("change"));
     }
 
     btnLoadDecks.addEventListener("click", async () => {
@@ -337,11 +343,14 @@
 
       if (deckSelect.selectedIndex !== -1) {
         deckStatus.className = "ok";
-        deckStatus.textContent = `Loaded ${label}`;
+        deckStatus.textContent = `Selected deck: ${label}`;
       } else {
         deckStatus.className = "muted";
         deckStatus.textContent = "No deck selected.";
       }
+
+      // Clear card display when deck changes
+      clearCardsUI();
     });
  
     //Create Deck
@@ -373,7 +382,7 @@
 
         const created = await res.json(); // {id, name}
         deckStatus.className = "ok";
-        deckStatus.textContent = `Created deck: ${created.id}: ${created.name}`;
+        deckStatus.textContent = `Created deck: ${created.name}`;
 
         newDeckNameInput.value = "";
         await loadDecks();
@@ -409,7 +418,9 @@
         return;
       }
 
-      if (!confirm(`Delete deck ${deckId}? This will also delete its cards.`)) return;
+      const deckName = deckSelect.options[deckSelect.selectedIndex]?.textContent || "this deck";
+
+      if (!confirm(`Delete "${deckName}"? This will also delete its cards.`)) return;
 
       try {
         const res = await fetch(`/decks/${deckId}`, {
@@ -420,7 +431,7 @@
         if (!res.ok) throw new Error((await res.json()).detail || "Delete deck failed");
 
         deckStatus.className = "ok";
-        deckStatus.textContent = `Deleted deck ${deckId}.`;
+        deckStatus.textContent = `Deleted deck "${deckName}".`;
 
         await loadDecks(); // refresh dropdown
 
@@ -433,6 +444,317 @@
     // CARD CRUD SCRIPTS
 
     //Create Card
+    const cardFrontIn = document.getElementById("cardFrontIn");
+    const cardBackIn = document.getElementById("cardBackIn");
+    const btnCreateCard = document.getElementById("btnCreateCard");
+    const createCardStatus = document.getElementById("createCardStatus");
+
+    btnCreateCard.addEventListener("click", async () => {
+      const deckId = selectedDeckId(); // Make sure to use selected deck
+      const front = cardFrontIn.value.trim();
+      const back = cardBackIn.value.trim();
+
+      if (!token) {
+        createCardStatus.className = "error";
+        createCardStatus.textContent = "Login first.";
+        return;
+      }
+      if (!deckId) {
+        createCardStatus.className = "error";
+        createCardStatus.textContent = "Select a deck first.";
+        return;
+      }
+      if (!front || !back) {
+        createCardStatus.className = "error";
+        createCardStatus.textContent = "Front and back are required.";
+        return;
+      }
+
+      try {
+        const res = await fetch(`/decks/${deckId}/cards`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ front, back }),
+        });
+
+        if (!res.ok) throw new Error((await res.json()).detail || "Create card failed");
+
+        const created = await res.json(); // {id, front, back}
+        createCardStatus.className = "ok";
+        const deckName = deckSelect.options[deckSelect.selectedIndex]?.textContent || "Unknown deck";
+        createCardStatus.textContent = `Created card with id "${created.id}" in ${deckName}.`;
+
+        // clear inputs
+        cardFrontIn.value = "";
+        cardBackIn.value = "";
+      } catch (err) {
+        createCardStatus.className = "error";
+        createCardStatus.textContent = err.message;
+      }
+    });
+
+    //Show cards in deck
+    const btnShowDeckCards = document.getElementById("btnShowDeckCards");
+    const deckCardsStatus = document.getElementById("deckCardsStatus");
+    const deckCards = document.getElementById("deckCards");
+
+    function clearCardsUI() {
+      deckCards.innerHTML = "";
+      deckCardsStatus.className = "muted";
+      deckCardsStatus.textContent = "No cards displayed.";
+    }
+
+    function renderCards(cards) {
+      deckCards.innerHTML = "";
+
+      for (const c of cards) {
+        const box = document.createElement("div");
+        box.className = "cardBox";
+
+        const meta = document.createElement("div");
+        meta.className = "mono muted";
+        meta.textContent = `Card #${c.id}`;
+
+        const front = document.createElement("div");
+        front.style.marginTop = "6px";
+        front.textContent = `Front: ${c.front}`;
+
+        const back = document.createElement("div");
+        back.style.marginTop = "6px";
+        back.textContent = `Back: ${c.back}`;
+
+        const actions = document.createElement("div");
+        actions.className = "cardActions";
+
+        const btnEdit = document.createElement("button");
+        btnEdit.textContent = "Edit";
+        btnEdit.addEventListener("click", () => {
+          enterEditMode(box, c); // pass the card object
+        });
+
+        const btnDelete = document.createElement("button");
+        btnDelete.textContent = "Delete";
+        btnDelete.addEventListener("click", () => {
+          deleteCard(c.id);
+        });
+
+        actions.appendChild(btnEdit);
+        actions.appendChild(btnDelete);
+
+        box.appendChild(meta);
+        box.appendChild(front);
+        box.appendChild(back);
+        box.appendChild(actions);
+        deckCards.appendChild(box);
+      }
+    }
+
+    btnShowDeckCards.addEventListener("click", async () => {
+      const deckId = selectedDeckId();
+
+      if (!token) {
+        deckCardsStatus.className = "error";
+        deckCardsStatus.textContent = "Login first.";
+        return;
+      }
+      if (!deckId) {
+        deckCardsStatus.className = "error";
+        deckCardsStatus.textContent = "Select a deck first.";
+        return;
+      }
+
+      try {
+        deckCardsStatus.className = "muted";
+        deckCardsStatus.textContent = "Loading cards...";
+
+        const res = await fetch(`/decks/${deckId}/cards`, {
+          headers: authHeaders(),
+        });
+
+        if (!res.ok) throw new Error((await res.json()).detail || "Failed to load cards");
+
+        const cards = await res.json(); // [{id, front, back}, ...]
+
+        if (cards.length === 0) {
+          deckCards.innerHTML = "";
+          deckCardsStatus.className = "muted";
+          deckCardsStatus.textContent = "No cards in this deck yet.";
+          return;
+        }
+
+        renderCards(cards);
+        deckCardsStatus.className = "ok";
+        const deckName = deckSelect.options[deckSelect.selectedIndex]?.textContent || "Unknown deck";
+        deckCardsStatus.textContent = `Showing ${cards.length} card(s) in deck "${deckName}".`;
+      } catch (err) {
+        deckCardsStatus.className = "error";
+        deckCardsStatus.textContent = err.message;
+      }
+    });
+
+    //Delete Card
+    async function deleteCard(cardId) {
+      if (!token) {
+        deckCardsStatus.className = "error";
+        deckCardsStatus.textContent = "Login first.";
+        return;
+      }
+
+      if (!confirm(`Delete card ${cardId}?`)) return;
+
+      try {
+        const res = await fetch(`/cards/${cardId}`, {
+          method: "DELETE",
+          headers: authHeaders(),
+        });
+
+        if (!res.ok)
+          throw new Error((await res.json()).detail || "Delete card failed");
+
+        deckCardsStatus.className = "ok";
+        deckCardsStatus.textContent = `Deleted card ${cardId}.`;
+
+        // Reload cards for current deck
+        const deckId = selectedDeckId();
+        if (deckId) {
+          const cardsRes = await fetch(`/decks/${deckId}/cards`, {
+            headers: authHeaders(),
+          });
+          const cards = await cardsRes.json();
+          renderCards(cards);
+        }
+      } catch (err) {
+        deckCardsStatus.className = "error";
+        deckCardsStatus.textContent = err.message;
+      }
+    }
+
+    //Edit Card
+    function enterEditMode(cardBoxEl, card) {
+      // Prevent double-enter
+      if (cardBoxEl.dataset.editing === "1") return;
+      cardBoxEl.dataset.editing = "1";
+
+      // Find existing nodes we created (meta, front, back, actions)
+      const metaEl = cardBoxEl.querySelector(".mono.muted");
+      const frontEl = metaEl.nextElementSibling; // front div
+      const backEl = frontEl.nextElementSibling; // back div
+      const actionsEl = backEl.nextElementSibling; // actions div
+
+      // Save original display text in case user cancels
+      const originalFront = card.front;
+      const originalBack = card.back;
+
+      // Create inputs
+      const frontInput = document.createElement("textarea");
+      frontInput.value = originalFront;
+
+      const backInput = document.createElement("textarea");
+      backInput.value = originalBack;
+
+      // Replace front/back display with inputs
+      frontEl.textContent = "Front:";
+      frontEl.appendChild(document.createElement("br"));
+      frontEl.appendChild(frontInput);
+
+      backEl.textContent = "Back:";
+      backEl.appendChild(document.createElement("br"));
+      backEl.appendChild(backInput);
+
+      // Replace actions with Save/Cancel
+      actionsEl.innerHTML = "";
+
+      const btnSave = document.createElement("button");
+      btnSave.textContent = "Save";
+      btnSave.addEventListener("click", async () => {
+        await saveCardEdits(cardBoxEl, card, frontInput.value, backInput.value);
+      });
+
+      const btnCancel = document.createElement("button");
+      btnCancel.textContent = "Cancel";
+      btnCancel.addEventListener("click", () => {
+        exitEditMode(cardBoxEl, card);
+      });
+
+      actionsEl.appendChild(btnSave);
+      actionsEl.appendChild(btnCancel);
+
+      frontInput.focus();
+    }
+
+    function exitEditMode(cardBoxEl, card) {
+      cardBoxEl.dataset.editing = "0";
+
+      const metaEl = cardBoxEl.querySelector(".mono.muted");
+      const frontEl = metaEl.nextElementSibling;
+      const backEl = frontEl.nextElementSibling;
+      const actionsEl = backEl.nextElementSibling;
+
+      // Restore view text
+      frontEl.textContent = `Front: ${card.front}`;
+      backEl.textContent = `Back: ${card.back}`;
+
+      // Restore Edit/Delete buttons
+      actionsEl.innerHTML = "";
+
+      const btnEdit = document.createElement("button");
+      btnEdit.textContent = "Edit";
+      btnEdit.addEventListener("click", () => enterEditMode(cardBoxEl, card));
+
+      const btnDelete = document.createElement("button");
+      btnDelete.textContent = "Delete";
+      btnDelete.addEventListener("click", () => deleteCard(card.id));
+
+      actionsEl.appendChild(btnEdit);
+      actionsEl.appendChild(btnDelete);
+    }
+
+    async function saveCardEdits(cardBoxEl, card, newFrontRaw, newBackRaw) {
+      const newFront = newFrontRaw.trim();
+      const newBack = newBackRaw.trim();
+
+      if (!token) {
+        deckCardsStatus.className = "error";
+        deckCardsStatus.textContent = "Login first.";
+        return;
+      }
+
+      if (!newFront || !newBack) {
+        deckCardsStatus.className = "error";
+        deckCardsStatus.textContent = "Front and back are required.";
+        return;
+      }
+
+      try {
+        deckCardsStatus.className = "muted";
+        deckCardsStatus.textContent = `Saving card ${card.id}...`;
+
+        const res = await fetch(`/cards/${card.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ front: newFront, back: newBack }),
+        });
+
+        if (!res.ok)
+          throw new Error((await res.json()).detail || "Update card failed");
+
+        const updated = await res.json(); // {id, front, back}
+
+        // Update the local card object so view mode uses new text
+        card.front = updated.front;
+        card.back = updated.back;
+
+        deckCardsStatus.className = "ok";
+        deckCardsStatus.textContent = `Saved card ${card.id}.`;
+
+        // Flip UI back to view mode (now showing updated values)
+        exitEditMode(cardBoxEl, card);
+      } catch (err) {
+        deckCardsStatus.className = "error";
+        deckCardsStatus.textContent = err.message;
+      }
+    }
+
 
     // CARD SRS (LEARN/REVIEW) SCRIPTS
 
