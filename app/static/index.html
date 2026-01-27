@@ -21,6 +21,8 @@
     .hidden { display: none; }
     .cardBox { border: 1px solid #eee; border-radius: 8px; padding: 12px; background: #fafafa; }
     .cardBox {white-space: pre-wrap; overflow-wrap: anywhere;}
+    .cardBox + .cardBox {margin-top: 8px;}
+    .cardBox pre {margin: 0; min-height: 1.2em;}
     .cardActions {display: flex; gap: 8px; margin-top: 10px;
 }
 
@@ -112,8 +114,8 @@
 
       <div class="row">
         <button id="btnLoadNew">Load next new</button>
-        <button id="btnLearnCurrent" class="hidden">Learn current</button>
         <button id="btnRevealNewBack">Reveal back</button>
+        <button id="btnLearnCurrent" class="hidden">Learn card</button>
       </div>
 
       <div style="margin-top:12px;">
@@ -122,8 +124,6 @@
         <div id="newBack" class="cardBox hidden"><pre class="card"></pre></div>
         <div id="newMeta" class="muted mono">No card loaded</div>
       </div>
-
-      <div id="newMsg" class="muted" style="margin-top:10px;"></div>
     </div>
 
     <!--Reviewing Section-->
@@ -154,15 +154,7 @@
         <div id="dueBack" class="cardBox hidden"><pre class="card"></pre></div>
         <div id="dueMeta" class="muted mono">No card loaded</div>
       </div>
-
-      <div id="dueMsg" class="muted" style="margin-top:10px;"></div>
     </div>
-  </div>
-
-  <!--Status Updates-->
-  <div class="box">
-    <h2>Status</h2>
-    <div id="msg" class="muted"></div>
   </div>
 
   <!--Scripts Section-->
@@ -181,12 +173,16 @@
 
     // AUTHORIZATION SCRIPTS
 
-    //Signup
+    //References
     const emailInput = document.getElementById("email");
     const passwordInput = document.getElementById("password");
     const signupBtn = document.getElementById("btnSignup");
     const authStatus = document.getElementById("authStatus");
+    const loginBtn = document.getElementById("btnLogin");
+    const logoutBtn = document.getElementById("btnLogout");
+    const deleteMeBtn = document.getElementById("btnDeleteMe");
 
+    //Signup
     signupBtn.addEventListener("click", async () => {
       const email = emailInput.value;
       const password = passwordInput.value;
@@ -209,8 +205,6 @@
     });
 
     //Login
-    const loginBtn = document.getElementById("btnLogin");
-
     loginBtn.addEventListener("click", async () => {
       try {
         const res = await fetch("/login", {
@@ -242,8 +236,6 @@
     });
 
     //Logout
-    const logoutBtn = document.getElementById("btnLogout");
-
     logoutBtn.addEventListener("click", () => {
       token = null;
       authStatus.className = "muted";
@@ -252,8 +244,6 @@
     });
 
     //Delete Account
-    const deleteMeBtn = document.getElementById("btnDeleteMe");
-
     deleteMeBtn.addEventListener("click", async () => {
       if (!token) {
         authStatus.className = "error";
@@ -283,12 +273,16 @@
 
     // DECK SCRIPTS
 
-    //Load Decks
+    //References
     const btnLoadDecks = document.getElementById("btnLoadDecks");
     const deckSelect = document.getElementById("deckSelect");
     const deckStatus = document.getElementById("deckStatus");
     const currentDeckLabel = document.getElementById("currentDeckLabel");
+    const newDeckNameInput = document.getElementById("newDeckName");
+    const btnCreateDeck = document.getElementById("btnCreateDeck");
+    const btnDeleteDeck = document.getElementById("btnDeleteDeck");
 
+    //Load Decks
     async function loadDecks() {
       if (!token) {
         deckStatus.className = "error";
@@ -354,9 +348,6 @@
     });
  
     //Create Deck
-    const newDeckNameInput = document.getElementById("newDeckName");
-    const btnCreateDeck = document.getElementById("btnCreateDeck");
-
     btnCreateDeck.addEventListener("click", async () => {
       const name = newDeckNameInput.value.trim();
 
@@ -397,8 +388,6 @@
     });
 
     //Delete Deck
-    const btnDeleteDeck = document.getElementById("btnDeleteDeck");
-
     function selectedDeckId() {
       const v = deckSelect.value;
       return v ? Number(v) : null;
@@ -443,12 +432,16 @@
 
     // CARD CRUD SCRIPTS
 
-    //Create Card
+    //References
     const cardFrontIn = document.getElementById("cardFrontIn");
     const cardBackIn = document.getElementById("cardBackIn");
     const btnCreateCard = document.getElementById("btnCreateCard");
     const createCardStatus = document.getElementById("createCardStatus");
+    const btnShowDeckCards = document.getElementById("btnShowDeckCards");
+    const deckCardsStatus = document.getElementById("deckCardsStatus");
+    const deckCards = document.getElementById("deckCards");
 
+    //Create Card
     btnCreateCard.addEventListener("click", async () => {
       const deckId = selectedDeckId(); // Make sure to use selected deck
       const front = cardFrontIn.value.trim();
@@ -494,10 +487,6 @@
     });
 
     //Show cards in deck
-    const btnShowDeckCards = document.getElementById("btnShowDeckCards");
-    const deckCardsStatus = document.getElementById("deckCardsStatus");
-    const deckCards = document.getElementById("deckCards");
-
     function clearCardsUI() {
       deckCards.innerHTML = "";
       deckCardsStatus.className = "muted";
@@ -755,8 +744,240 @@
       }
     }
 
-
     // CARD SRS (LEARN/REVIEW) SCRIPTS
+
+    //Learn card references
+    let currentNewCard = null;
+    const btnLoadNew = document.getElementById("btnLoadNew");
+    const newFront = document.getElementById("newFront");
+    const newBack = document.getElementById("newBack");
+    const newMeta = document.getElementById("newMeta"); 
+    const btnRevealNewBack = document.getElementById("btnRevealNewBack");
+    const btnLearnCurrent = document.getElementById("btnLearnCurrent");
+
+    //Fetch new card
+    btnLoadNew.addEventListener("click", async () => {
+      const deckId = selectedDeckId();
+
+      if (!token) {
+        newMeta.className = "error mono";
+        newMeta.textContent = "Login first.";
+        return;
+      }
+      if (!deckId) {
+        newMeta.className = "error mono";
+        newMeta.textContent = "Select a deck first.";
+        return;
+      }
+
+      newMeta.className = "muted mono";
+      newMeta.textContent = "Loading next new card...";
+
+      try {
+        const res = await fetch(`/decks/${deckId}/cards/new`, {
+          headers: authHeaders(),
+        });
+
+        if (!res.ok) throw new Error((await res.json()).detail || "Failed to load new card");
+
+        const card = await res.json(); // {id, front, back}
+        currentNewCard = card;
+
+        // Populate UI (front only for now)
+        newFront.querySelector("pre").textContent = card.front;
+
+        // Keep back hidden for now (and clear any previous back)
+        newBack.querySelector("pre").textContent = "";
+        newBack.classList.add("hidden");
+        btnLearnCurrent.classList.add("hidden");
+
+        newMeta.className = "ok mono";
+        newMeta.textContent = `Loaded NEW card #${card.id}`;
+      } catch (err) {
+        currentNewCard = null;
+
+        newFront.querySelector("pre").textContent = "";
+        newBack.querySelector("pre").textContent = "";
+        newBack.classList.add("hidden");
+
+        newMeta.className = "muted mono";
+        newMeta.textContent = err.message; // e.g. "No new cards"
+      }
+    });
+
+    //Reveal new card Back
+    btnRevealNewBack.addEventListener("click", () => {
+      if (!currentNewCard) {
+        newMeta.className = "error mono";
+        newMeta.textContent = "Load a new card first.";
+        return;
+      }
+
+      // Show back text
+      newBack.querySelector("pre").textContent = currentNewCard.back;
+      newBack.classList.remove("hidden");
+
+      // Show Learn button
+      btnLearnCurrent.classList.remove("hidden");
+    });
+
+    //Learn card
+    btnLearnCurrent.addEventListener("click", async () => {
+      if (!currentNewCard) {
+        newMeta.className = "error mono";
+        newMeta.textContent = "No card loaded.";
+        return;
+      }
+
+      const cardId = currentNewCard.id;
+
+      newMeta.className = "muted mono";
+      newMeta.textContent = `Learning card #${cardId}...`;
+
+      try {
+        const res = await fetch(`/cards/${cardId}/learn`, {
+          method: "POST",
+          headers: authHeaders(),
+        });
+
+        if (!res.ok)
+          throw new Error((await res.json()).detail || "Learn card failed");
+
+        // Reset UI to initial state
+        currentNewCard = null;
+
+        newFront.querySelector("pre").textContent = "";
+        newBack.querySelector("pre").textContent = "";
+        newBack.classList.add("hidden");
+        btnLearnCurrent.classList.add("hidden");
+
+        newMeta.className = "ok mono";
+        newMeta.textContent = `Learned card with id "${cardId}"`;
+      } catch (err) {
+        newMeta.className = "error mono";
+        newMeta.textContent = err.message;
+      }
+    });
+
+    //Due card references
+    let currentDueCard = null;
+    const btnLoadDue = document.getElementById("btnLoadDue");
+    const dueFront = document.getElementById("dueFront");
+    const dueBack = document.getElementById("dueBack");
+    const dueMeta = document.getElementById("dueMeta");
+    const btnRevealDueBack = document.getElementById("btnRevealDueBack");
+    const reviewRow = document.getElementById("reviewRow");
+    const reviewButtons = document.querySelectorAll(".btnReview");
+
+    //Fetch due card
+    btnLoadDue.addEventListener("click", async () => {
+      const deckId = selectedDeckId();
+
+      if (!token) {
+        dueMeta.className = "error mono";
+        dueMeta.textContent = "Login first.";
+        return;
+      }
+      if (!deckId) {
+        dueMeta.className = "error mono";
+        dueMeta.textContent = "Select a deck first.";
+        return;
+      }
+
+      dueMeta.className = "muted mono";
+      dueMeta.textContent = "Loading next due card...";
+
+      // Reset visible state for this section
+      currentDueCard = null;
+      dueFront.querySelector("pre").textContent = "";
+      dueBack.querySelector("pre").textContent = "";
+      dueBack.classList.add("hidden"); // always start hidden
+      reviewRow.classList.add("hidden");
+
+      try {
+        const res = await fetch(`/decks/${deckId}/cards/due`, {
+          headers: authHeaders(),
+        });
+
+        if (!res.ok) {
+          throw new Error((await res.json()).detail || "Failed to load due card");
+        }
+
+        const card = await res.json(); // {id, front, back}
+        currentDueCard = card;
+
+        // Preload both (but keep back hidden until reveal step)
+        dueFront.querySelector("pre").textContent = card.front;
+        dueBack.querySelector("pre").textContent = card.back;
+
+        dueMeta.className = "ok mono";
+        dueMeta.textContent = `Loaded DUE card #${card.id}`;
+      } catch (err) {
+        currentDueCard = null;
+
+        dueFront.querySelector("pre").textContent = "";
+        dueBack.querySelector("pre").textContent = "";
+        dueBack.classList.add("hidden");
+
+        dueMeta.className = "muted mono";
+        dueMeta.textContent = err.message; // e.g. "No due cards"
+      }
+    });
+
+    //Reveal due card back
+    btnRevealDueBack.addEventListener("click", () => {
+      if (!currentDueCard) {
+        dueMeta.className = "error mono";
+        dueMeta.textContent = "Load a due card first.";
+        return;
+      }
+
+      dueBack.classList.remove("hidden");     // show back box
+      reviewRow.classList.remove("hidden");   // show 0–5 buttons row
+    });
+
+    //Review due card
+    reviewButtons.forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!currentDueCard) {
+          dueMeta.className = "error mono";
+          dueMeta.textContent = "Load a due card first.";
+          return;
+        }
+
+        const cardId = currentDueCard.id;
+        const quality = Number(btn.dataset.q);
+
+        dueMeta.className = "muted mono";
+        dueMeta.textContent = `Reviewing card #${cardId} (q=${quality})...`;
+
+        try {
+          const res = await fetch(`/cards/${cardId}/review`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ quality }),
+          });
+
+          if (!res.ok) {
+            throw new Error((await res.json()).detail || "Review failed");
+          }
+
+          // Reset UI to initial state
+          currentDueCard = null;
+
+          dueFront.querySelector("pre").textContent = "";
+          dueBack.querySelector("pre").textContent = "";
+          dueBack.classList.add("hidden");
+          reviewRow.classList.add("hidden");
+
+          dueMeta.className = "ok mono";
+          dueMeta.textContent = `Reviewed card with id "${cardId}" (Rating=${quality})`;
+        } catch (err) {
+          dueMeta.className = "error mono";
+          dueMeta.textContent = err.message;
+        }
+      });
+    });
 
  </script>
 </body>
