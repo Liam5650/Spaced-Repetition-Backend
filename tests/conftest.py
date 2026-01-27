@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.database import Base, get_db
 
-
+assert TEST_DATABASE_URL is not None, "TEST_DATABASE_URL not set, check if in dev environment."
 engine = create_engine(TEST_DATABASE_URL)
 TestingSessionLocal = sessionmaker(
     autocommit=False,
