@@ -1,5 +1,7 @@
 # Spaced Repetition Backend
 
+**Live Demo:** [https://spaced-repetition-api.dev](https://spaced-repetition-api.dev)
+
 Backend API for a spaced-repetition flashcard application.
 
 The project focuses on a clean REST design, authentication, and data ownership rules. The service supports users, decks, and cards, and is extended with scheduling and review logic based on the SM-2 algorithm.
