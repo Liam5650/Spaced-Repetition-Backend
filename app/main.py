@@ -20,7 +20,8 @@ from pathlib import Path
 # Drop and recreate all tables if in the dev environment
 if ENV == "dev":
     Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+
+Base.metadata.create_all(bind=engine)
     
 app = FastAPI()
 app.mount("/ui", StaticFiles(directory=str(Path(__file__).resolve().parent / "static"), html=True), name="ui")
