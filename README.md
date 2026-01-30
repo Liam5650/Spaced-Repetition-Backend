@@ -22,4 +22,4 @@ The project focuses on a clean REST design, authentication, and data ownership r
 - Account deletion with password verification
 - Learn cards (creates initial schedule)
 - Fetch new cards / due cards
-- Review endpoint updates schedule + persists deterministic review history
+- Review endpoint updates schedule and persists deterministic review history with concurrency safety
