@@ -169,6 +169,25 @@
       if (!token) return {};
       return { Authorization: `Bearer ${token}` };
     }
+    
+    //Error Handling
+    function formatError(err, fallback = "Request failed") {
+      // FastAPI JSON body
+      if (err && typeof err === "object") {
+        // { detail: "..." }
+        if (typeof err.detail === "string" && err.detail.trim()) {
+          return err.detail.trim();
+        }
+
+        // { detail: [ { msg: "..." }, ... ] }
+        if (Array.isArray(err.detail)) {
+          const first = err.detail.find(e => typeof e?.msg === "string");
+          if (first) return first.msg;
+        }
+      }
+
+      return fallback;
+    }
 
     // AUTHORIZATION SCRIPTS
 
@@ -192,7 +211,7 @@
 
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.detail || "Signup failed");
+          throw new Error(formatError(err, "Signup failed"));
         }
         const data = await res.json();
         authStatus.className = "ok";
@@ -215,13 +234,19 @@
           }),
         });
 
-        if (!res.ok) throw new Error((await res.json()).detail || "Login failed");
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(formatError(err, "Login failed"));
+        }
 
         const data = await res.json();
         token = data.access_token;
 
         const meRes = await fetch("/me", { headers: authHeaders() });
-        if (!meRes.ok) throw new Error("Token check failed");
+        if (!meRes.ok) {
+          const err = await meRes.json();
+          throw new Error(formatError(err, "Token check failed"));
+        }
 
         const me = await meRes.json();
         authStatus.className = "ok";
@@ -259,7 +284,10 @@
           body: JSON.stringify({ password: passwordInput.value }),
         });
 
-        if (!res.ok) throw new Error((await res.json()).detail || "Delete failed");
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(formatError(err, "Delete failed"));
+        }
 
         token = null;
         authStatus.className = "ok";
@@ -294,7 +322,10 @@
       deckStatus.textContent = "Loading decks...";
 
       const res = await fetch("/decks", { headers: authHeaders() });
-      if (!res.ok) throw new Error((await res.json()).detail || "Failed to load decks");
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(formatError(err, "Failed to load decks"));
+      }
 
       const decks = await res.json(); // list of { id, name }
       deckSelect.innerHTML = "";
@@ -368,7 +399,10 @@
           body: JSON.stringify({ name }),
         });
 
-        if (!res.ok) throw new Error((await res.json()).detail || "Create deck failed");
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(formatError(err, "Create deck failed"));
+        }
 
         const created = await res.json(); // {id, name}
         deckStatus.className = "ok";
@@ -416,7 +450,10 @@
           headers: authHeaders(),
         });
 
-        if (!res.ok) throw new Error((await res.json()).detail || "Delete deck failed");
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(formatError(err, "Delete deck failed"));
+        }
 
         deckStatus.className = "ok";
         deckStatus.textContent = `Deleted deck "${deckName}".`;
@@ -469,7 +506,10 @@
           body: JSON.stringify({ front, back }),
         });
 
-        if (!res.ok) throw new Error((await res.json()).detail || "Create card failed");
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(formatError(err, "Create card failed"));
+        }
 
         const created = await res.json(); // {id, front, back}
         createCardStatus.className = "ok";
@@ -495,7 +535,7 @@
 
         const meta = document.createElement("div");
         meta.className = "mono muted";
-        meta.textContent = `Card #${c.id}`;
+        meta.textContent = `Card id: ${c.id}`;
 
         const front = document.createElement("div");
         front.style.marginTop = "6px";
@@ -553,7 +593,10 @@
           headers: authHeaders(),
         });
 
-        if (!res.ok) throw new Error((await res.json()).detail || "Failed to load cards");
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(formatError(err, "Failed to load cards"));
+        }
 
         const cards = await res.json(); // [{id, front, back}, ...]
 
@@ -582,7 +625,7 @@
         return;
       }
 
-      if (!confirm(`Delete card ${cardId}?`)) return;
+      if (!confirm(`Delete card with id: ${cardId}?`)) return;
 
       try {
         const res = await fetch(`/cards/${cardId}`, {
@@ -590,11 +633,13 @@
           headers: authHeaders(),
         });
 
-        if (!res.ok)
-          throw new Error((await res.json()).detail || "Delete card failed");
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(formatError(err, "Delete card failed"));
+        }
 
         deckCardsStatus.className = "ok";
-        deckCardsStatus.textContent = `Deleted card ${cardId}.`;
+        deckCardsStatus.textContent = `Deleted card with id: ${cardId}.`;
 
         // Reload cards for current deck
         const deckId = selectedDeckId();
@@ -717,8 +762,10 @@
           body: JSON.stringify({ front: newFront, back: newBack }),
         });
 
-        if (!res.ok)
-          throw new Error((await res.json()).detail || "Update card failed");
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(formatError(err, "Update card failed"));
+        }
 
         const updated = await res.json(); // {id, front, back}
 
@@ -771,7 +818,10 @@
           headers: authHeaders(),
         });
 
-        if (!res.ok) throw new Error((await res.json()).detail || "Failed to load new card");
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(formatError(err, "Failed to load new card"));
+        }
 
         const card = await res.json(); // {id, front, back}
         currentNewCard = card;
@@ -785,7 +835,7 @@
         btnLearnCurrent.classList.add("hidden");
 
         newMeta.className = "ok mono";
-        newMeta.textContent = `Loaded NEW card #${card.id}`;
+        newMeta.textContent = `Loaded NEW card with id: ${card.id}`;
       } catch (err) {
         currentNewCard = null;
 
@@ -825,7 +875,7 @@
       const cardId = currentNewCard.id;
 
       newMeta.className = "muted mono";
-      newMeta.textContent = `Learning card #${cardId}...`;
+      newMeta.textContent = `Learning card with id: ${cardId}...`;
 
       try {
         const res = await fetch(`/cards/${cardId}/learn`, {
@@ -833,8 +883,10 @@
           headers: authHeaders(),
         });
 
-        if (!res.ok)
-          throw new Error((await res.json()).detail || "Learn card failed");
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(formatError(err, "Learn card failed"));
+        }
 
         // Reset UI to initial state
         currentNewCard = null;
@@ -845,7 +897,7 @@
         btnLearnCurrent.classList.add("hidden");
 
         newMeta.className = "ok mono";
-        newMeta.textContent = `Learned card with id "${cardId}"`;
+        newMeta.textContent = `Learned card with id: ${cardId}`;
       } catch (err) {
         newMeta.className = "error mono";
         newMeta.textContent = err.message;
@@ -893,7 +945,8 @@
         });
 
         if (!res.ok) {
-          throw new Error((await res.json()).detail || "Failed to load due card");
+          const err = await res.json();
+          throw new Error(formatError(err, "Failed to load due card"));
         }
 
         const card = await res.json(); // {id, front, back}
@@ -904,7 +957,7 @@
         dueBack.querySelector("pre").textContent = card.back;
 
         dueMeta.className = "ok mono";
-        dueMeta.textContent = `Loaded DUE card #${card.id}`;
+        dueMeta.textContent = `Loaded DUE card with id: ${card.id}`;
       } catch (err) {
         currentDueCard = null;
 
@@ -942,7 +995,7 @@
         const quality = Number(btn.dataset.q);
 
         dueMeta.className = "muted mono";
-        dueMeta.textContent = `Reviewing card #${cardId} (q=${quality})...`;
+        dueMeta.textContent = `Reviewing card with id: ${cardId} (q=${quality})...`;
 
         try {
           const res = await fetch(`/cards/${cardId}/review`, {
@@ -952,7 +1005,8 @@
           });
 
           if (!res.ok) {
-            throw new Error((await res.json()).detail || "Review failed");
+            const err = await res.json();
+            throw new Error(formatError(err, "Review failed"));
           }
 
           // Reset UI to initial state
@@ -964,7 +1018,7 @@
           reviewRow.classList.add("hidden");
 
           dueMeta.className = "ok mono";
-          dueMeta.textContent = `Reviewed card with id "${cardId}" (Rating=${quality})`;
+          dueMeta.textContent = `Reviewed card with id: ${cardId} (Rating=${quality})`;
         } catch (err) {
           dueMeta.className = "error mono";
           dueMeta.textContent = err.message;
