@@ -7,6 +7,7 @@ Backend API for a spaced-repetition flashcard application.
 The project focuses on a clean REST design, authentication, and data ownership rules. The service supports users, decks, and cards, and is extended with scheduling and review logic based on the SM-2 algorithm.
 
 ## Tech Stack
+- **Python 3.12** — runtime
 - **FastAPI** — API framework
 - **SQLAlchemy 2.x** — ORM
 - **PostgreSQL** — relational database
